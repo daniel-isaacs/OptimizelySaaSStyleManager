@@ -21,7 +21,7 @@ This application provides a user-friendly interface for managing Display Templat
 
 ## Prerequisites
 
-- .NET 8.0 SDK or later
+- .NET 10.0 SDK or later
 - Node.js (for Tailwind CSS compilation)
 - Optimizely SaaS CMS instance with API access
 
