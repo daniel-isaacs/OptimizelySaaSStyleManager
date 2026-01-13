@@ -1,0 +1,379 @@
+@page "/import"
+@rendermode InteractiveServer
+@inject IStyleService StyleService
+@inject IStyleExportService ExportService
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Import/Export Styles</PageTitle>
+
+<div class="space-y-6">
+    <h1 class="text-2xl font-bold text-gray-900">Import/Export Styles</h1>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="card p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Export Styles</h2>
+            <p class="text-gray-600 mb-4">Export all styles or selected styles as a JSON file for backup or transfer to another environment.</p>
+
+            @if (_isLoadingExport)
+            {
+                <div class="flex justify-center items-center py-8">
+                    <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                    <span class="ml-3 text-gray-600">Loading styles...</span>
+                </div>
+            }
+            else if (_exportStyles.Any())
+            {
+                <div class="mb-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="flex items-center gap-2">
+                            <input type="checkbox" @onchange="ToggleSelectAll" checked="@_allSelected" class="w-4 h-4 text-blue-600 rounded" />
+                            <span class="text-sm font-medium text-gray-700">Select All (@_exportStyles.Count styles)</span>
+                        </label>
+                        <span class="text-sm text-gray-500">@_selectedCount selected</span>
+                    </div>
+
+                    <div class="max-h-64 overflow-y-auto border border-gray-200 rounded-lg">
+                        @foreach (var style in _exportStyles)
+                        {
+                            <label class="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0">
+                                <input type="checkbox" @bind="style.IsSelected" class="w-4 h-4 text-blue-600 rounded" />
+                                <div class="flex-1 min-w-0">
+                                    <span class="font-medium text-gray-900 truncate block">@style.Style.Key</span>
+                                    <span class="text-sm text-gray-500 truncate block">@style.Style.DisplayName</span>
+                                </div>
+                                @if (!string.IsNullOrEmpty(style.Style.BaseType))
+                                {
+                                    <span class="badge badge-info">@style.Style.BaseType</span>
+                                }
+                            </label>
+                        }
+                    </div>
+                </div>
+
+                <button class="btn btn-primary w-full" @onclick="ExportSelected" disabled="@(_selectedCount == 0)">
+                    Export @_selectedCount Style(s) as JSON
+                </button>
+            }
+            else
+            {
+                <div class="text-center py-8 text-gray-500">
+                    <p>No styles available to export</p>
+                    <button class="btn btn-secondary mt-4" @onclick="LoadExportStyles">Refresh</button>
+                </div>
+            }
+        </div>
+
+        <div class="card p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Import Styles</h2>
+            <p class="text-gray-600 mb-4">Import styles from a JSON file. Existing styles with the same key can be skipped or overwritten.</p>
+
+            <div class="mb-4">
+                <label class="label">JSON File or Content</label>
+                <textarea @bind="_importJson"
+                          class="input font-mono text-sm"
+                          rows="8"
+                          placeholder='Paste JSON here or use the file upload below...
+
+Example:
+[
+  {
+    "key": "my-style",
+    "displayName": "My Style",
+    "_baseType": "section",
+    "settings": {}
+  }
+]'></textarea>
+            </div>
+
+            <div class="mb-4">
+                <label class="label">Or upload a file</label>
+                <InputFile OnChange="HandleFileUpload" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" accept=".json" />
+            </div>
+
+            <div class="mb-4">
+                <label class="flex items-center gap-2">
+                    <input type="checkbox" @bind="_overwriteExisting" class="w-4 h-4 text-blue-600 rounded" />
+                    <span class="text-sm font-medium text-gray-700">Overwrite existing styles with same key</span>
+                </label>
+            </div>
+
+            @if (_importPreview.Any())
+            {
+                <div class="mb-4 p-4 bg-gray-50 rounded-lg">
+                    <h4 class="font-medium text-gray-900 mb-2">Preview (@_importPreview.Count styles)</h4>
+                    <ul class="text-sm space-y-1">
+                        @foreach (var style in _importPreview.Take(5))
+                        {
+                            <li class="flex items-center gap-2">
+                                <span class="text-gray-600">@style.Key</span>
+                                @if (_existingKeys.Contains(style.Key))
+                                {
+                                    <span class="text-yellow-600 text-xs">(exists - will @(_overwriteExisting ? "overwrite" : "skip"))</span>
+                                }
+                                else
+                                {
+                                    <span class="text-green-600 text-xs">(new)</span>
+                                }
+                            </li>
+                        }
+                        @if (_importPreview.Count > 5)
+                        {
+                            <li class="text-gray-400">...and @(_importPreview.Count - 5) more</li>
+                        }
+                    </ul>
+                </div>
+            }
+
+            <button class="btn btn-success w-full" @onclick="ImportStyles" disabled="@(_isImporting || string.IsNullOrWhiteSpace(_importJson))">
+                @if (_isImporting)
+                {
+                    <span class="flex items-center justify-center gap-2">
+                        <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Importing...
+                    </span>
+                }
+                else
+                {
+                    <span>Import Styles</span>
+                }
+            </button>
+        </div>
+    </div>
+
+    @if (_importResults.Any())
+    {
+        <div class="card p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Import Results</h2>
+            <div class="space-y-2">
+                @foreach (var result in _importResults)
+                {
+                    <div class="flex items-center gap-3 p-2 @(result.Success ? "bg-green-50" : "bg-red-50") rounded">
+                        @if (result.Success)
+                        {
+                            <span class="text-green-600">✓</span>
+                        }
+                        else
+                        {
+                            <span class="text-red-600">✕</span>
+                        }
+                        <span class="font-medium">@result.Key</span>
+                        <span class="text-sm text-gray-600">@result.Message</span>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+<Toast Message="@_toastMessage"
+       Type="@_toastType"
+       IsVisible="@_showToast"
+       OnClose="() => _showToast = false" />
+
+@code {
+    private List<SelectableStyle> _exportStyles = new();
+    private bool _isLoadingExport = true;
+    private bool _allSelected;
+    private int _selectedCount => _exportStyles.Count(s => s.IsSelected);
+
+    private string _importJson = string.Empty;
+    private bool _overwriteExisting;
+    private bool _isImporting;
+    private List<DisplayTemplate> _importPreview = new();
+    private HashSet<string> _existingKeys = new();
+    private List<ImportResult> _importResults = new();
+
+    private bool _showToast;
+    private string _toastMessage = string.Empty;
+    private Toast.ToastType _toastType = Toast.ToastType.Info;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadExportStyles();
+    }
+
+    private async Task LoadExportStyles()
+    {
+        _isLoadingExport = true;
+        try
+        {
+            var styles = await StyleService.GetAllStylesAsync();
+            _exportStyles = styles.Select(s => new SelectableStyle { Style = s }).ToList();
+            _existingKeys = styles.Select(s => s.Key).ToHashSet();
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"Error loading styles: {ex.Message}", Toast.ToastType.Error);
+        }
+        finally
+        {
+            _isLoadingExport = false;
+        }
+    }
+
+    private void ToggleSelectAll(ChangeEventArgs e)
+    {
+        _allSelected = (bool)(e.Value ?? false);
+        foreach (var style in _exportStyles)
+        {
+            style.IsSelected = _allSelected;
+        }
+    }
+
+    private async Task ExportSelected()
+    {
+        var selectedStyles = _exportStyles
+            .Where(s => s.IsSelected)
+            .Select(s => s.Style)
+            .ToList();
+
+        if (!selectedStyles.Any())
+        {
+            ShowToast("Please select at least one style to export", Toast.ToastType.Warning);
+            return;
+        }
+
+        var json = ExportService.ExportToJson(selectedStyles);
+        var fileName = $"optimizely-styles-{DateTime.Now:yyyyMMdd-HHmmss}.json";
+
+        await JSRuntime.InvokeVoidAsync("downloadFile", fileName, json);
+        ShowToast($"Exported {selectedStyles.Count} style(s)", Toast.ToastType.Success);
+    }
+
+    private async Task HandleFileUpload(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+
+        try
+        {
+            using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            using var reader = new StreamReader(stream);
+            _importJson = await reader.ReadToEndAsync();
+            UpdateImportPreview();
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"Error reading file: {ex.Message}", Toast.ToastType.Error);
+        }
+    }
+
+    private void UpdateImportPreview()
+    {
+        try
+        {
+            _importPreview = ExportService.ImportFromJson(_importJson);
+        }
+        catch
+        {
+            _importPreview = new List<DisplayTemplate>();
+        }
+        StateHasChanged();
+    }
+
+    private async Task ImportStyles()
+    {
+        if (string.IsNullOrWhiteSpace(_importJson)) return;
+
+        _isImporting = true;
+        _importResults.Clear();
+
+        try
+        {
+            var styles = ExportService.ImportFromJson(_importJson);
+
+            foreach (var style in styles)
+            {
+                try
+                {
+                    var exists = _existingKeys.Contains(style.Key);
+
+                    if (exists && !_overwriteExisting)
+                    {
+                        _importResults.Add(new ImportResult
+                        {
+                            Key = style.Key,
+                            Success = false,
+                            Message = "Skipped (already exists)"
+                        });
+                        continue;
+                    }
+
+                    var request = new CreateStyleRequest
+                    {
+                        Key = style.Key,
+                        DisplayName = style.DisplayName,
+                        BaseType = style.BaseType,
+                        ContentType = style.ContentType,
+                        IsDefault = style.IsDefault,
+                        Settings = style.Settings
+                    };
+
+                    if (exists)
+                    {
+                        await StyleService.ReplaceStyleAsync(style.Key, request);
+                        _importResults.Add(new ImportResult
+                        {
+                            Key = style.Key,
+                            Success = true,
+                            Message = "Updated"
+                        });
+                    }
+                    else
+                    {
+                        await StyleService.CreateStyleAsync(request);
+                        _existingKeys.Add(style.Key);
+                        _importResults.Add(new ImportResult
+                        {
+                            Key = style.Key,
+                            Success = true,
+                            Message = "Created"
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _importResults.Add(new ImportResult
+                    {
+                        Key = style.Key,
+                        Success = false,
+                        Message = ex.Message
+                    });
+                }
+            }
+
+            var successCount = _importResults.Count(r => r.Success);
+            ShowToast($"Import completed: {successCount}/{styles.Count} successful", Toast.ToastType.Success);
+
+            await LoadExportStyles();
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"Error parsing JSON: {ex.Message}", Toast.ToastType.Error);
+        }
+        finally
+        {
+            _isImporting = false;
+        }
+    }
+
+    private void ShowToast(string message, Toast.ToastType type)
+    {
+        _toastMessage = message;
+        _toastType = type;
+        _showToast = true;
+    }
+
+    private class SelectableStyle
+    {
+        public DisplayTemplate Style { get; set; } = new();
+        public bool IsSelected { get; set; }
+    }
+
+    private class ImportResult
+    {
+        public string Key { get; set; } = string.Empty;
+        public bool Success { get; set; }
+        public string Message { get; set; } = string.Empty;
+    }
+}

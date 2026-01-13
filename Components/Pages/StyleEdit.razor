@@ -1,0 +1,429 @@
+@page "/style/new"
+@page "/style/{Key}/edit"
+@page "/style/{Key}"
+@rendermode InteractiveServer
+@inject IStyleService StyleService
+@inject NavigationManager Navigation
+
+<PageTitle>@(_isViewMode ? "View" : (_isEditMode ? "Edit" : "Create")) Style</PageTitle>
+
+<div class="space-y-6">
+    <div class="flex items-center gap-4">
+        <button class="text-gray-500 hover:text-gray-700" @onclick="GoBack">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+            </svg>
+        </button>
+        <h1 class="text-2xl font-bold text-gray-900">
+            @if (_isViewMode)
+            {
+                <span>View Style: @Key</span>
+            }
+            else if (_isEditMode)
+            {
+                <span>Edit Style: @Key</span>
+            }
+            else
+            {
+                <span>Create New Style</span>
+            }
+        </h1>
+    </div>
+
+    @if (_isLoading)
+    {
+        <div class="flex justify-center items-center py-12">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <span class="ml-3 text-gray-600">Loading...</span>
+        </div>
+    }
+    else if (_error != null)
+    {
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+            <p class="font-medium">Error</p>
+            <p class="text-sm mt-1">@_error</p>
+            <button class="btn btn-primary mt-3" @onclick="GoBack">Go Back</button>
+        </div>
+    }
+    else
+    {
+        <div class="card p-6">
+            <EditForm Model="_model" OnValidSubmit="HandleSubmit">
+                <DataAnnotationsValidator />
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label class="label">Key *</label>
+                        <InputText @bind-Value="_model.Key" class="input" disabled="@(_isEditMode || _isViewMode)" />
+                        <ValidationMessage For="@(() => _model.Key)" class="text-red-500 text-sm mt-1" />
+                    </div>
+
+                    <div>
+                        <label class="label">Display Name *</label>
+                        <InputText @bind-Value="_model.DisplayName" class="input" disabled="@_isViewMode" />
+                        <ValidationMessage For="@(() => _model.DisplayName)" class="text-red-500 text-sm mt-1" />
+                    </div>
+
+                    <div>
+                        <label class="label">Base Type</label>
+                        <InputSelect @bind-Value="_model.BaseType" class="select" disabled="@_isViewMode">
+                            <option value="">Select base type...</option>
+                            <option value="section">Section</option>
+                            <option value="row">Row</option>
+                            <option value="column">Column</option>
+                        </InputSelect>
+                    </div>
+
+                    <div>
+                        <label class="label">Content Type</label>
+                        <InputText @bind-Value="_model.ContentType" class="input" disabled="@_isViewMode" placeholder="e.g., MyContentType" />
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <InputCheckbox @bind-Value="_model.IsDefault" class="w-4 h-4 text-blue-600 rounded" disabled="@_isViewMode" />
+                        <label class="text-sm font-medium text-gray-700">Is Default</label>
+                    </div>
+                </div>
+
+                <div class="mt-8">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-semibold text-gray-900">Settings</h3>
+                        @if (!_isViewMode)
+                        {
+                            <button type="button" class="btn btn-primary btn-sm" @onclick="AddSetting">
+                                Add Setting
+                            </button>
+                        }
+                    </div>
+
+                    @if (!_settings.Any())
+                    {
+                        <p class="text-gray-500 text-center py-4">No settings defined. @(!_isViewMode ? "Click 'Add Setting' to create one." : "")</p>
+                    }
+                    else
+                    {
+                        <div class="space-y-4">
+                            @foreach (var setting in _settings)
+                            {
+                                <div class="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                                    <div class="flex justify-between items-start mb-4">
+                                        <h4 class="font-medium text-gray-900">@(string.IsNullOrEmpty(setting.Name) ? "New Setting" : setting.Name)</h4>
+                                        @if (!_isViewMode)
+                                        {
+                                            <button type="button" class="text-red-500 hover:text-red-700" @onclick="() => RemoveSetting(setting)">
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                                </svg>
+                                            </button>
+                                        }
+                                    </div>
+
+                                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                        <div>
+                                            <label class="label">Setting Key *</label>
+                                            <input type="text" @bind="setting.Name" class="input" disabled="@_isViewMode" placeholder="e.g., backgroundColor" />
+                                        </div>
+                                        <div>
+                                            <label class="label">Display Name</label>
+                                            <input type="text" @bind="setting.Setting.DisplayName" class="input" disabled="@_isViewMode" placeholder="e.g., Background Color" />
+                                        </div>
+                                        <div>
+                                            <label class="label">Editor</label>
+                                            <select @bind="setting.Setting.Editor" class="select" disabled="@_isViewMode">
+                                                <option value="string">String</option>
+                                                <option value="boolean">Boolean</option>
+                                                <option value="number">Number</option>
+                                                <option value="select">Select (Dropdown)</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="label">Sort Order</label>
+                                            <input type="number" @bind="setting.Setting.SortOrder" class="input" disabled="@_isViewMode" />
+                                        </div>
+                                    </div>
+
+                                    @if (setting.Setting.Editor == "select")
+                                    {
+                                        <div class="mt-4">
+                                            <div class="flex justify-between items-center mb-2">
+                                                <label class="label mb-0">Choices</label>
+                                                @if (!_isViewMode)
+                                                {
+                                                    <button type="button" class="text-blue-600 hover:text-blue-700 text-sm" @onclick="() => AddChoice(setting)">
+                                                        + Add Choice
+                                                    </button>
+                                                }
+                                            </div>
+                                            @if (setting.Choices.Any())
+                                            {
+                                                <div class="space-y-2">
+                                                    @foreach (var choice in setting.Choices)
+                                                    {
+                                                        <div class="flex items-center gap-2 bg-white p-2 rounded border border-gray-200">
+                                                            <input type="text" @bind="choice.Key" class="input flex-1" placeholder="Key" disabled="@_isViewMode" />
+                                                            <input type="text" @bind="choice.DisplayName" class="input flex-1" placeholder="Display Name" disabled="@_isViewMode" />
+                                                            <input type="number" @bind="choice.SortOrder" class="input w-20" placeholder="Order" disabled="@_isViewMode" />
+                                                            @if (!_isViewMode)
+                                                            {
+                                                                <button type="button" class="text-red-500 hover:text-red-700" @onclick="() => RemoveChoice(setting, choice)">
+                                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                                                    </svg>
+                                                                </button>
+                                                            }
+                                                        </div>
+                                                    }
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <p class="text-gray-400 text-sm">No choices defined</p>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+
+                @if (!_isViewMode)
+                {
+                    <div class="mt-8 flex justify-end gap-3">
+                        <button type="button" class="btn btn-secondary" @onclick="GoBack">Cancel</button>
+                        <button type="submit" class="btn btn-success" disabled="@_isSaving">
+                            @if (_isSaving)
+                            {
+                                <span class="flex items-center gap-2">
+                                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                    Saving...
+                                </span>
+                            }
+                            else
+                            {
+                                <span>@(_isEditMode ? "Update Style" : "Create Style")</span>
+                            }
+                        </button>
+                    </div>
+                }
+                else
+                {
+                    <div class="mt-8 flex justify-end gap-3">
+                        <button type="button" class="btn btn-secondary" @onclick="GoBack">Back</button>
+                        <button type="button" class="btn btn-warning" @onclick="SwitchToEdit">Edit</button>
+                    </div>
+                }
+            </EditForm>
+        </div>
+    }
+</div>
+
+<Toast Message="@_toastMessage"
+       Type="@_toastType"
+       IsVisible="@_showToast"
+       OnClose="() => _showToast = false" />
+
+@code {
+    [Parameter] public string? Key { get; set; }
+
+    private CreateStyleRequest _model = new();
+    private List<SettingItem> _settings = new();
+
+    private bool _isLoading;
+    private bool _isSaving;
+    private string? _error;
+    private bool _isEditMode => !string.IsNullOrEmpty(Key) && Navigation.Uri.EndsWith("/edit", StringComparison.OrdinalIgnoreCase);
+    private bool _isViewMode => !string.IsNullOrEmpty(Key) && !Navigation.Uri.EndsWith("/edit", StringComparison.OrdinalIgnoreCase);
+
+    private bool _showToast;
+    private string _toastMessage = string.Empty;
+    private Toast.ToastType _toastType = Toast.ToastType.Info;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrEmpty(Key))
+        {
+            await LoadStyle();
+        }
+    }
+
+    private async Task LoadStyle()
+    {
+        _isLoading = true;
+        _error = null;
+
+        try
+        {
+            var style = await StyleService.GetStyleAsync(Uri.UnescapeDataString(Key!));
+            if (style == null)
+            {
+                _error = $"Style '{Key}' not found";
+                return;
+            }
+
+            _model = new CreateStyleRequest
+            {
+                Key = style.Key,
+                DisplayName = style.DisplayName,
+                BaseType = style.BaseType,
+                ContentType = style.ContentType,
+                IsDefault = style.IsDefault
+            };
+
+            _settings = style.Settings.Select(kvp => new SettingItem
+            {
+                Name = kvp.Key,
+                Setting = new DisplayTemplateSetting
+                {
+                    DisplayName = kvp.Value.DisplayName,
+                    Editor = kvp.Value.Editor,
+                    SortOrder = kvp.Value.SortOrder
+                },
+                Choices = kvp.Value.Choices?.Select(c => new ChoiceItem
+                {
+                    Key = c.Key,
+                    DisplayName = c.Value.DisplayName,
+                    SortOrder = c.Value.SortOrder
+                }).ToList() ?? new List<ChoiceItem>()
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task HandleSubmit()
+    {
+        _isSaving = true;
+
+        try
+        {
+            // Convert empty strings to null for optional fields
+            _model.ContentType = string.IsNullOrWhiteSpace(_model.ContentType) ? null : _model.ContentType;
+            _model.BaseType = string.IsNullOrWhiteSpace(_model.BaseType) ? null : _model.BaseType;
+
+            var settingsDict = _settings
+                .Where(s => !string.IsNullOrWhiteSpace(s.Name))
+                .ToDictionary(
+                    s => s.Name,
+                    s => new DisplayTemplateSetting
+                    {
+                        DisplayName = string.IsNullOrWhiteSpace(s.Setting.DisplayName) ? s.Name : s.Setting.DisplayName,
+                        Editor = s.Setting.Editor,
+                        SortOrder = s.Setting.SortOrder,
+                        Choices = s.Setting.Editor == "select" && s.Choices.Any()
+                            ? s.Choices
+                                .Where(c => !string.IsNullOrWhiteSpace(c.Key))
+                                .ToDictionary(
+                                    c => c.Key,
+                                    c => new SettingChoice { DisplayName = c.DisplayName, SortOrder = c.SortOrder }
+                                )
+                            : null
+                    }
+                );
+
+            // Set to null if empty - API may not accept empty settings object
+            _model.Settings = settingsDict.Any() ? settingsDict : null!;
+
+            if (_isEditMode)
+            {
+                var updateRequest = new UpdateStyleRequest
+                {
+                    DisplayName = _model.DisplayName,
+                    BaseType = _model.BaseType,
+                    ContentType = _model.ContentType,
+                    IsDefault = _model.IsDefault,
+                    Settings = _model.Settings
+                };
+                await StyleService.UpdateStyleAsync(_model.Key, updateRequest);
+                ShowToast("Style updated successfully", Toast.ToastType.Success);
+            }
+            else
+            {
+                await StyleService.CreateStyleAsync(_model);
+                ShowToast("Style created successfully", Toast.ToastType.Success);
+            }
+
+            await Task.Delay(1500);
+            Navigation.NavigateTo("/");
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"Error: {ex.Message}", Toast.ToastType.Error);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void AddSetting()
+    {
+        _settings.Add(new SettingItem
+        {
+            Name = string.Empty,
+            Setting = new DisplayTemplateSetting
+            {
+                Editor = "string",
+                SortOrder = _settings.Count + 1
+            },
+            Choices = new List<ChoiceItem>()
+        });
+    }
+
+    private void RemoveSetting(SettingItem setting)
+    {
+        _settings.Remove(setting);
+    }
+
+    private void AddChoice(SettingItem setting)
+    {
+        setting.Choices.Add(new ChoiceItem
+        {
+            Key = string.Empty,
+            DisplayName = string.Empty,
+            SortOrder = setting.Choices.Count + 1
+        });
+    }
+
+    private void RemoveChoice(SettingItem setting, ChoiceItem choice)
+    {
+        setting.Choices.Remove(choice);
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/");
+    }
+
+    private void SwitchToEdit()
+    {
+        Navigation.NavigateTo($"/style/{Uri.EscapeDataString(Key!)}/edit");
+    }
+
+    private void ShowToast(string message, Toast.ToastType type)
+    {
+        _toastMessage = message;
+        _toastType = type;
+        _showToast = true;
+    }
+
+    private class SettingItem
+    {
+        public string Name { get; set; } = string.Empty;
+        public DisplayTemplateSetting Setting { get; set; } = new();
+        public List<ChoiceItem> Choices { get; set; } = new();
+    }
+
+    private class ChoiceItem
+    {
+        public string Key { get; set; } = string.Empty;
+        public string DisplayName { get; set; } = string.Empty;
+        public int SortOrder { get; set; }
+    }
+}

@@ -1,0 +1,73 @@
+<div class="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+    <div class="flex-1 w-full sm:w-auto">
+        <input type="text"
+               placeholder="Search by key or name..."
+               class="input"
+               @bind="SearchText"
+               @bind:event="oninput"
+               @onkeyup="HandleSearch" />
+    </div>
+
+    <div class="w-full sm:w-48">
+        <select class="select" @onchange="HandleBaseTypeChange">
+            <option value="">All Base Types</option>
+            <option value="section">Section</option>
+            <option value="row">Row</option>
+            <option value="column">Column</option>
+        </select>
+    </div>
+
+    <div class="flex items-center gap-2">
+        <span class="badge badge-info">@TotalCount total</span>
+        @if (!string.IsNullOrEmpty(SearchText) || !string.IsNullOrEmpty(SelectedBaseType))
+        {
+            <button class="text-sm text-gray-500 hover:text-gray-700" @onclick="ClearFilters">
+                Clear filters
+            </button>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string SearchText { get; set; } = string.Empty;
+    [Parameter] public string SelectedBaseType { get; set; } = string.Empty;
+    [Parameter] public int TotalCount { get; set; }
+    [Parameter] public EventCallback<string> OnSearchChanged { get; set; }
+    [Parameter] public EventCallback<string> OnBaseTypeChanged { get; set; }
+
+    private System.Timers.Timer? _debounceTimer;
+
+    private void HandleSearch(KeyboardEventArgs e)
+    {
+        _debounceTimer?.Stop();
+        _debounceTimer?.Dispose();
+
+        _debounceTimer = new System.Timers.Timer(300);
+        _debounceTimer.Elapsed += async (sender, args) =>
+        {
+            _debounceTimer?.Stop();
+            await InvokeAsync(async () => await OnSearchChanged.InvokeAsync(SearchText));
+        };
+        _debounceTimer.AutoReset = false;
+        _debounceTimer.Start();
+    }
+
+    private async Task HandleBaseTypeChange(ChangeEventArgs e)
+    {
+        SelectedBaseType = e.Value?.ToString() ?? string.Empty;
+        await OnBaseTypeChanged.InvokeAsync(SelectedBaseType);
+    }
+
+    private async Task ClearFilters()
+    {
+        SearchText = string.Empty;
+        SelectedBaseType = string.Empty;
+        await OnSearchChanged.InvokeAsync(string.Empty);
+        await OnBaseTypeChanged.InvokeAsync(string.Empty);
+    }
+
+    public void Dispose()
+    {
+        _debounceTimer?.Dispose();
+    }
+}

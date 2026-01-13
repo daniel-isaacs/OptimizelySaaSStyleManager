@@ -1,0 +1,16 @@
+{
+  "name": "optimizelysaasstylemanager",
+  "version": "1.0.0",
+  "description": "Optimizely SaaS Style Manager",
+  "scripts": {
+    "css:build": "npx @tailwindcss/cli -i ./Styles/app.css -o ./wwwroot/css/app.css --minify",
+    "css:watch": "npx @tailwindcss/cli -i ./Styles/app.css -o ./wwwroot/css/app.css --watch"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.1.18",
+    "tailwindcss": "^4.1.18"
+  }
+}

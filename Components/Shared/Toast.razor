@@ -1,0 +1,50 @@
+@if (IsVisible)
+{
+    <div class="fixed top-4 right-4 z-50 animate-fade-in">
+        <div class="@GetToastClasses() px-6 py-4 rounded-lg shadow-lg flex items-center space-x-3">
+            <span class="text-lg">@GetIcon()</span>
+            <span class="font-medium">@Message</span>
+            <button @onclick="Close" class="ml-4 text-white/80 hover:text-white">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string Message { get; set; } = string.Empty;
+    [Parameter] public ToastType Type { get; set; } = ToastType.Info;
+    [Parameter] public bool IsVisible { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private string GetToastClasses() => Type switch
+    {
+        ToastType.Success => "bg-green-600 text-white",
+        ToastType.Error => "bg-red-600 text-white",
+        ToastType.Warning => "bg-yellow-500 text-white",
+        _ => "bg-blue-600 text-white"
+    };
+
+    private string GetIcon() => Type switch
+    {
+        ToastType.Success => "✓",
+        ToastType.Error => "✕",
+        ToastType.Warning => "⚠",
+        _ => "ℹ"
+    };
+
+    private async Task Close()
+    {
+        await OnClose.InvokeAsync();
+    }
+
+    public enum ToastType
+    {
+        Info,
+        Success,
+        Warning,
+        Error
+    }
+}

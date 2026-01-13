@@ -1,0 +1,299 @@
+@page "/"
+@rendermode InteractiveServer
+@inject IStyleService StyleService
+@inject NavigationManager Navigation
+
+<PageTitle>Style Management</PageTitle>
+
+<div class="space-y-6">
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <h1 class="text-2xl font-bold text-gray-900">Style Management</h1>
+        <button class="btn btn-success" @onclick="CreateNew">
+            Register New Style
+        </button>
+    </div>
+
+    <div class="card p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Registered Styles</h2>
+
+        <SearchFilter SearchText="@_searchText"
+                      SelectedBaseType="@_selectedBaseType"
+                      TotalCount="@_filteredStyles.Count"
+                      OnSearchChanged="HandleSearchChanged"
+                      OnBaseTypeChanged="HandleBaseTypeChanged" />
+
+        <div class="mt-6">
+            @if (_isLoading)
+            {
+                <div class="flex justify-center items-center py-12">
+                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <span class="ml-3 text-gray-600">Loading styles...</span>
+                </div>
+            }
+            else if (_error != null)
+            {
+                <div class="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+                    <p class="font-medium">Error loading styles</p>
+                    <p class="text-sm mt-1">@_error</p>
+                    <button class="btn btn-primary mt-3" @onclick="LoadStyles">Try Again</button>
+                </div>
+            }
+            else if (!_filteredStyles.Any())
+            {
+                <div class="text-center py-12 text-gray-500">
+                    <p class="text-lg">No styles found</p>
+                    @if (!string.IsNullOrEmpty(_searchText) || !string.IsNullOrEmpty(_selectedBaseType))
+                    {
+                        <p class="text-sm mt-2">Try adjusting your filters</p>
+                    }
+                    else
+                    {
+                        <p class="text-sm mt-2">Click "Register New Style" to create your first style</p>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Key</th>
+                                <th>Display Name</th>
+                                <th>Base Type</th>
+                                <th>Content Type</th>
+                                <th>Default</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var style in GetPagedStyles())
+                            {
+                                <tr>
+                                    <td class="font-mono text-sm">@style.Key</td>
+                                    <td>@style.DisplayName</td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(style.BaseType))
+                                        {
+                                            <span class="badge badge-info">@style.BaseType</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-gray-400">-</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(style.ContentType))
+                                        {
+                                            <span class="text-sm">@style.ContentType</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-gray-400">-</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (style.IsDefault)
+                                        {
+                                            <span class="badge badge-success">Yes</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge badge-secondary">No</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <div class="flex gap-2">
+                                            <button class="action-btn action-btn-view" @onclick="() => ViewStyle(style.Key)">View</button>
+                                            <button class="action-btn action-btn-edit" @onclick="() => EditStyle(style.Key)">Edit</button>
+                                            <button class="action-btn action-btn-delete" @onclick="() => ConfirmDelete(style)">Delete</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                <Pagination CurrentPage="@_currentPage"
+                            TotalPages="@_totalPages"
+                            TotalItems="@_filteredStyles.Count"
+                            PageSize="@_pageSize"
+                            OnPageChanged="HandlePageChanged" />
+            }
+        </div>
+    </div>
+</div>
+
+<ConfirmDialog IsVisible="@_showDeleteConfirm"
+               Title="Delete Style"
+               Message="@($"Are you sure you want to delete the style '{_styleToDelete?.Key}'? This action cannot be undone.")"
+               ConfirmText="Delete"
+               OnConfirm="DeleteStyle"
+               OnCancel="CancelDelete" />
+
+<Toast Message="@_toastMessage"
+       Type="@_toastType"
+       IsVisible="@_showToast"
+       OnClose="HideToast" />
+
+@code {
+    private List<DisplayTemplate> _allStyles = new();
+    private List<DisplayTemplate> _filteredStyles = new();
+    private bool _isLoading = true;
+    private string? _error;
+
+    private string _searchText = string.Empty;
+    private string _selectedBaseType = string.Empty;
+
+    private int _currentPage = 1;
+    private int _pageSize = 10;
+    private int _totalPages => (int)Math.Ceiling((double)_filteredStyles.Count / _pageSize);
+
+    private bool _showDeleteConfirm;
+    private DisplayTemplate? _styleToDelete;
+
+    private bool _showToast;
+    private string _toastMessage = string.Empty;
+    private Toast.ToastType _toastType = Toast.ToastType.Info;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStyles();
+    }
+
+    private async Task LoadStyles()
+    {
+        _isLoading = true;
+        _error = null;
+
+        try
+        {
+            _allStyles = await StyleService.GetAllStylesAsync();
+            ApplyFilters();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void ApplyFilters()
+    {
+        _filteredStyles = _allStyles
+            .Where(s => string.IsNullOrEmpty(_searchText) ||
+                        s.Key.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
+                        s.DisplayName.Contains(_searchText, StringComparison.OrdinalIgnoreCase))
+            .Where(s => string.IsNullOrEmpty(_selectedBaseType) ||
+                        s.BaseType?.Equals(_selectedBaseType, StringComparison.OrdinalIgnoreCase) == true)
+            .OrderBy(s => s.Key)
+            .ToList();
+
+        _currentPage = 1;
+    }
+
+    private List<DisplayTemplate> GetPagedStyles()
+    {
+        return _filteredStyles
+            .Skip((_currentPage - 1) * _pageSize)
+            .Take(_pageSize)
+            .ToList();
+    }
+
+    private void HandleSearchChanged(string searchText)
+    {
+        _searchText = searchText;
+        ApplyFilters();
+        StateHasChanged();
+    }
+
+    private void HandleBaseTypeChanged(string baseType)
+    {
+        _selectedBaseType = baseType;
+        ApplyFilters();
+        StateHasChanged();
+    }
+
+    private void HandlePageChanged(int page)
+    {
+        _currentPage = page;
+    }
+
+    private void CreateNew()
+    {
+        Navigation.NavigateTo("/style/new");
+    }
+
+    private void ViewStyle(string key)
+    {
+        Navigation.NavigateTo($"/style/{Uri.EscapeDataString(key)}");
+    }
+
+    private void EditStyle(string key)
+    {
+        Navigation.NavigateTo($"/style/{Uri.EscapeDataString(key)}/edit");
+    }
+
+    private void ConfirmDelete(DisplayTemplate style)
+    {
+        _styleToDelete = style;
+        _showDeleteConfirm = true;
+        StateHasChanged();
+    }
+
+    private void CancelDelete()
+    {
+        _styleToDelete = null;
+        _showDeleteConfirm = false;
+        StateHasChanged();
+    }
+
+    private async Task DeleteStyle()
+    {
+        if (_styleToDelete == null) return;
+
+        try
+        {
+            await StyleService.DeleteStyleAsync(_styleToDelete.Key);
+            _allStyles.Remove(_styleToDelete);
+            ApplyFilters();
+            ShowToast($"Style '{_styleToDelete.Key}' deleted successfully", Toast.ToastType.Success);
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"Error deleting style: {ex.Message}", Toast.ToastType.Error);
+        }
+        finally
+        {
+            _styleToDelete = null;
+            _showDeleteConfirm = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ShowToast(string message, Toast.ToastType type)
+    {
+        _toastMessage = message;
+        _toastType = type;
+        _showToast = true;
+        StateHasChanged();
+
+        _ = Task.Delay(5000).ContinueWith(_ =>
+        {
+            InvokeAsync(() =>
+            {
+                _showToast = false;
+                StateHasChanged();
+            });
+        });
+    }
+
+    private void HideToast()
+    {
+        _showToast = false;
+    }
+}
