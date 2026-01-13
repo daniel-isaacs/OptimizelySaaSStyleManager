@@ -1,0 +1,272 @@
+@inject IContentTypeService ContentTypeService
+
+<div class="relative" @onfocusout="HandleFocusOut" tabindex="-1">
+    <input type="text"
+           class="input pr-8 w-full"
+           placeholder="@Placeholder"
+           disabled="@Disabled"
+           @bind="SearchText"
+           @bind:event="oninput"
+           @onfocus="HandleFocus"
+           @onkeydown="HandleKeyDown" />
+    @if (!Disabled)
+    {
+        <button type="button"
+                class="absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400 hover:text-gray-600"
+                @onclick="ToggleDropdown"
+                @onclick:preventDefault
+                @onclick:stopPropagation>
+            <svg class="w-4 h-4 transition-transform @(_isOpen ? "rotate-180" : "")" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+            </svg>
+        </button>
+    }
+
+    @if (_isOpen && !Disabled)
+    {
+        <div class="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+            @if (_isLoading)
+            {
+                <div class="flex items-center justify-center py-4">
+                    <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                    <span class="ml-2 text-sm text-gray-500">Loading content types...</span>
+                </div>
+            }
+            else if (_error != null)
+            {
+                <div class="p-3 text-sm text-red-600">
+                    @_error
+                </div>
+            }
+            else if (!_filteredContentTypes.Any())
+            {
+                <div class="p-3 text-sm text-gray-500">
+                    @(string.IsNullOrEmpty(SearchText) ? "No content types available" : "No matching content types")
+                </div>
+            }
+            else
+            {
+                @if (!string.IsNullOrEmpty(Value))
+                {
+                    <button type="button"
+                            class="w-full px-3 py-2 text-left text-sm text-gray-500 hover:bg-gray-50 border-b border-gray-100"
+                            @onclick="ClearSelection"
+                            @onclick:preventDefault
+                            @onclick:stopPropagation>
+                        Clear selection
+                    </button>
+                }
+                @foreach (var contentType in _filteredContentTypes.Take(50))
+                {
+                    var isSelected = contentType.Key == Value;
+                    var isHighlighted = _highlightedIndex >= 0 && _filteredContentTypes.Take(50).ToList().IndexOf(contentType) == _highlightedIndex;
+                    <button type="button"
+                            class="w-full px-3 py-2 text-left text-sm hover:bg-blue-50 @(isSelected ? "bg-blue-100 text-blue-800" : "text-gray-900") @(isHighlighted ? "bg-blue-50" : "")"
+                            @onclick="() => SelectContentType(contentType)"
+                            @onclick:preventDefault
+                            @onclick:stopPropagation>
+                        <div class="font-medium">@(contentType.DisplayName ?? contentType.Key)</div>
+                        @if (!string.IsNullOrEmpty(contentType.DisplayName) && contentType.DisplayName != contentType.Key)
+                        {
+                            <div class="text-xs text-gray-500">@contentType.Key</div>
+                        }
+                        @if (!string.IsNullOrEmpty(contentType.BaseType))
+                        {
+                            <div class="text-xs text-gray-400">Base: @contentType.BaseType</div>
+                        }
+                    </button>
+                }
+                @if (_filteredContentTypes.Count > 50)
+                {
+                    <div class="px-3 py-2 text-xs text-gray-400 border-t border-gray-100">
+                        Showing 50 of @_filteredContentTypes.Count results. Type to narrow down.
+                    </div>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "Search content types...";
+
+    private string _searchText = string.Empty;
+    private string SearchText
+    {
+        get => _searchText;
+        set
+        {
+            if (_searchText != value)
+            {
+                _searchText = value;
+                _highlightedIndex = -1;
+                FilterContentTypes();
+            }
+        }
+    }
+
+    private bool _isOpen;
+    private bool _isLoading;
+    private string? _error;
+    private List<ContentType> _allContentTypes = new();
+    private List<ContentType> _filteredContentTypes = new();
+    private int _highlightedIndex = -1;
+    private bool _hasLoadedContentTypes;
+    private System.Timers.Timer? _focusOutTimer;
+
+    protected override void OnParametersSet()
+    {
+        if (!_isOpen && Value != null)
+        {
+            var selected = _allContentTypes.FirstOrDefault(ct => ct.Key == Value);
+            _searchText = selected?.DisplayName ?? selected?.Key ?? Value;
+        }
+        else if (!_isOpen && string.IsNullOrEmpty(Value))
+        {
+            _searchText = string.Empty;
+        }
+    }
+
+    private async Task LoadContentTypesAsync()
+    {
+        if (_hasLoadedContentTypes)
+        {
+            return;
+        }
+
+        _isLoading = true;
+        _error = null;
+
+        try
+        {
+            _allContentTypes = await ContentTypeService.GetAllContentTypesAsync();
+            _filteredContentTypes = _allContentTypes.OrderBy(ct => ct.DisplayName ?? ct.Key).ToList();
+            _hasLoadedContentTypes = true;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load content types: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void FilterContentTypes()
+    {
+        if (string.IsNullOrWhiteSpace(_searchText))
+        {
+            _filteredContentTypes = _allContentTypes.OrderBy(ct => ct.DisplayName ?? ct.Key).ToList();
+            return;
+        }
+
+        var lowerSearch = _searchText.ToLowerInvariant();
+        _filteredContentTypes = _allContentTypes
+            .Where(ct =>
+                (ct.Key?.ToLowerInvariant().Contains(lowerSearch) ?? false) ||
+                (ct.DisplayName?.ToLowerInvariant().Contains(lowerSearch) ?? false))
+            .OrderBy(ct => ct.DisplayName ?? ct.Key)
+            .ToList();
+    }
+
+    private async Task HandleFocus()
+    {
+        _focusOutTimer?.Stop();
+        if (!_isOpen)
+        {
+            _isOpen = true;
+            await LoadContentTypesAsync();
+        }
+    }
+
+    private void HandleFocusOut()
+    {
+        _focusOutTimer?.Stop();
+        _focusOutTimer?.Dispose();
+
+        _focusOutTimer = new System.Timers.Timer(200);
+        _focusOutTimer.Elapsed += async (sender, args) =>
+        {
+            _focusOutTimer?.Stop();
+            await InvokeAsync(() =>
+            {
+                _isOpen = false;
+                if (Value != null)
+                {
+                    var selected = _allContentTypes.FirstOrDefault(ct => ct.Key == Value);
+                    _searchText = selected?.DisplayName ?? selected?.Key ?? Value;
+                }
+                else
+                {
+                    _searchText = string.Empty;
+                }
+                StateHasChanged();
+            });
+        };
+        _focusOutTimer.AutoReset = false;
+        _focusOutTimer.Start();
+    }
+
+    private async Task ToggleDropdown()
+    {
+        _focusOutTimer?.Stop();
+        _isOpen = !_isOpen;
+        if (_isOpen)
+        {
+            await LoadContentTypesAsync();
+        }
+    }
+
+    private async Task SelectContentType(ContentType contentType)
+    {
+        _focusOutTimer?.Stop();
+        _searchText = contentType.DisplayName ?? contentType.Key;
+        _isOpen = false;
+        _highlightedIndex = -1;
+        await ValueChanged.InvokeAsync(contentType.Key);
+    }
+
+    private async Task ClearSelection()
+    {
+        _focusOutTimer?.Stop();
+        _searchText = string.Empty;
+        _isOpen = false;
+        _highlightedIndex = -1;
+        await ValueChanged.InvokeAsync(null);
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        var visibleItems = _filteredContentTypes.Take(50).ToList();
+        var maxIndex = visibleItems.Count - 1;
+
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                _highlightedIndex = Math.Min(_highlightedIndex + 1, maxIndex);
+                break;
+            case "ArrowUp":
+                _highlightedIndex = Math.Max(_highlightedIndex - 1, 0);
+                break;
+            case "Enter":
+                if (_highlightedIndex >= 0 && _highlightedIndex <= maxIndex)
+                {
+                    await SelectContentType(visibleItems[_highlightedIndex]);
+                }
+                break;
+            case "Escape":
+                _isOpen = false;
+                _highlightedIndex = -1;
+                break;
+        }
+    }
+
+    public void Dispose()
+    {
+        _focusOutTimer?.Dispose();
+    }
+}

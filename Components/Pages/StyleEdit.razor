@@ -76,7 +76,9 @@
 
                     <div>
                         <label class="label">Content Type</label>
-                        <InputText @bind-Value="_model.ContentType" class="input" disabled="@_isViewMode" placeholder="e.g., MyContentType" />
+                        <ContentTypeDropdown @bind-Value="_model.ContentType"
+                                             Disabled="@_isViewMode"
+                                             Placeholder="Search content types..." />
                     </div>
 
                     <div class="flex items-center gap-2">

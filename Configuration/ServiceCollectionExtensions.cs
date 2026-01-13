@@ -46,6 +46,25 @@ public static class ServiceCollectionExtensions
 
         services.AddScoped<IStyleExportService, StyleExportService>();
 
+        // Register the content type service with bearer token authentication
+        services.AddHttpClient<IContentTypeService, ContentTypeService>((serviceProvider, client) =>
+        {
+            var settings = serviceProvider.GetRequiredService<IOptions<OptimizelyApiSettings>>().Value;
+
+            // Ensure base URL ends with / for proper path resolution
+            var baseUrl = settings.BaseUrl;
+            if (!baseUrl.EndsWith('/'))
+            {
+                baseUrl += "/";
+            }
+
+            client.BaseAddress = new Uri(baseUrl);
+            client.Timeout = TimeSpan.FromSeconds(30);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
+            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        })
+        .AddHttpMessageHandler<BearerTokenHandler>();
+
         return services;
     }
 }
