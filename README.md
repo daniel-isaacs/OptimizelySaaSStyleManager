@@ -143,3 +143,9 @@ Errors are displayed to users via toast notifications.
 ## License
 
 This project is provided as-is for use with Optimizely SaaS CMS.
+
+## Support
+
+If you've found this learning centre helpful, consider buying me a coffee. It helps keep me caffeinated and creating more content!
+
+<a href="https://buymeacoffee.com/adayinthelife" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="50"></a>
